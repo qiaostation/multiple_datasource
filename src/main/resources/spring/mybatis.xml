@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:aop="http://www.springframework.org/schema/aop" xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+
+         http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd">
+
+    <!--数据库连接池-->
+    <bean id="dataSourceOne" class="org.apache.commons.dbcp.BasicDataSource"
+          destroy-method="close">
+        <property name="driverClassName" value="com.mysql.jdbc.Driver"/>
+        <property name="url" value="jdbc:mysql://localhost:3306/db_one"/>
+        <property name="username" value="root"/>
+        <property name="password" value="root"/>
+        <property name="initialSize" value="1"/>
+        <property name="minIdle" value="1"/>
+        <property name="maxIdle" value="5"/>
+    </bean>
+
+    <bean id="dataSourceTwo" class="org.apache.commons.dbcp.BasicDataSource"
+          destroy-method="close">
+        <property name="driverClassName" value="com.mysql.jdbc.Driver"/>
+        <property name="url" value="jdbc:mysql://localhost:3306/db_two"/>
+        <property name="username" value="root"/>
+        <property name="password" value="root"/>
+        <property name="initialSize" value="1"/>
+        <property name="minIdle" value="1"/>
+        <property name="maxIdle" value="5"/>
+    </bean>
+
+    <!--spring和mybatis整合-->
+    <bean id="dynamicDataSource" class="cc.qiaoo.multiple_datasource.db.DynamicDataSource">
+        <property name="targetDataSources">
+            <map key-type="java.lang.String">
+                <entry value-ref="dataSourceOne" key="db_one"/>
+                <entry value-ref="dataSourceTwo" key="db_two"/>
+            </map>
+        </property>
+        <property name="defaultTargetDataSource" ref="dataSourceOne">
+        </property>
+    </bean>
+
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <property name="dataSource" ref="dynamicDataSource"/>
+        <property name="mapperLocations">
+            <list>
+                <value>classpath:META-INF/mybatis/db_one/mapper/*.xml</value>
+                <value>classpath:META-INF/mybatis/db_two/mapper/*.xml</value>
+            </list>
+        </property>
+    </bean>
+
+    <!--dao接口所在包名，spring会自动查找其下的类-->
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <property name="basePackage"
+                  value="cc.qiaoo.multiple_datasource.dao.db_one.mapper,cc.qiaoo.multiple_datasource.dao.db_two.mapper"/>
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+    </bean>
+
+    <!--事务管理-->
+    <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="dynamicDataSource"/>
+    </bean>
+
+    <aop:config>
+        <aop:pointcut id="transactionPointCut" expression="execution(* cc.qiaoo.multiple_datasource..*.*(..))"/>
+        <aop:advisor advice-ref="txAdvice" pointcut-ref="transactionPointCut"/>
+    </aop:config>
+
+    <tx:advice id="txAdvice" transaction-manager="transactionManager"/>
+
+    <bean id="dataSourceInterceptor" class="cc.qiaoo.multiple_datasource.db.DataSourceInterceptor"/>
+    <aop:config>
+        <aop:aspect id="dataSourceAspect" ref="dataSourceInterceptor">
+            <aop:pointcut id="daoOne" expression="execution(* cc.qiaoo.multiple_datasource.dao.db_one.mapper.*.*(..))"/>
+            <aop:before pointcut-ref="daoOne" method="setDataSourceOne"/>
+        </aop:aspect>
+        <aop:aspect id="dataSourceAspect2" ref="dataSourceInterceptor">
+            <aop:pointcut id="daoTwo" expression="execution(* cc.qiaoo.multiple_datasource.dao.db_two.mapper.*.*(..))"/>
+            <aop:before pointcut-ref="daoTwo" method="setDataSourceTwo"/>
+        </aop:aspect>
+    </aop:config>
+</beans>
